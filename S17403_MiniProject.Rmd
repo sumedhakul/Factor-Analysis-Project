@@ -1,0 +1,210 @@
+---
+title: "Mini Project"
+author: "S17403"
+date: "2023-05-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Factor Analysis
+
+### Explanatory Factor Analysis
+
+**Load dataset**
+
+```{r}
+#https://www.kaggle.com/datasets/mssmartypants/water-quality
+library(readr)
+waterQuality1 <- read_csv("waterQuality1.csv")
+#View(waterQuality1)
+str(waterQuality1)
+fadata<-waterQuality1[,-21]
+
+#remove null values
+fadata <- na.omit(fadata) # Remove NA
+colSums(is.na(fadata))
+
+```
+
+In factor analysis, the Kaiser-Meyer-Olkin (KMO) measure is used to assess the sampling adequacy for factor analysis.The KMO values range between 0 and 1. A higher KMO value (close to 1) indicates a better suitability of the dataset for factor analysis. Generally, a KMO value above 0.7 is considered acceptable. Additionally, we can examine the KMO values per variable to identify variables with low individual KMO values. Variables with KMO values below 0.5 may indicate poor sampling adequacy and may need to be excluded from the factor analysis.
+
+```{r}
+library(psych)
+df_corr <- cor(fadata) # Create a correlation matrix
+KMO(df_corr) # Kaiser-Meyer-Olkin factor adequacy
+
+fa.var<-c('aluminium','ammonia' ,'arsenic','barium','cadmium','chloramine','chromium','copper','lead','nitrites','perchlorate','radium','silver') 
+fadata<-fadata[,fa.var]
+
+```
+
+**Correlation Matrix for the data**
+
+```{r}
+library(corrplot)
+df1_corr <- cor(fadata)
+corrplot(round(df1_corr, 2), 
+         type="upper", order="hclust", 
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         diag=FALSE) # hide correlation coefficient on the principal diagonal
+round(df1_corr, 2)
+
+```
+
+**Standardizing each variable**
+
+```{r}
+fadata <- apply(fadata, 2, scale)
+head(fadata)
+```
+
+General methods used in determining the number of factors
+
+-    Cumulative proportion of at least 0.80
+
+-    Eigen Values of at least one
+
+-    Based on Scree Plot
+
+**Calculate Eigen Values**
+
+```{r}
+#Evaluate the correlation matrix
+fa.cor<-cor(fadata)
+# get eigenvalues
+ev <- eigen(round(fa.cor,3)) 
+ev$values
+round(ev$values,5)
+
+sum(ev$values)
+
+cumsum(ev$values)
+
+
+cumsum(ev$values)/13
+```
+
+```{r}
+ev$values
+```
+
+**Scree Plot**
+
+```{r}
+library(nFactors)
+plot(nScree(x=fa.cor,model="factors"))
+```
+
+```{r}
+
+plot(ev$values, type='b', ylab='Eigenvalues', xlab='Factor')
+
+```
+
+**Factor Analysis with No Rotation**
+
+```{r}
+fa.res<-factanal(x=fadata, factors=4, rotation='none')
+fa.res
+```
+
+```{r}
+# There are 13 variables and 4 factors
+round(fa.res$loadings[ 1:13,], 3)
+```
+
+**Communalities**
+
+```{r}
+#communality
+
+#fa.res$uniquenesses
+
+apply(fa.res$loadings^2,1,sum) # communality
+
+
+sum(apply(fa.res$loadings^2,1,sum))/13
+
+
+```
+
+**Residual Matrix**
+
+```{r}
+#residuals
+Lambda <- fa.res$loadings
+Psi <- diag(fa.res$uniquenesses)
+S <- fa.res$correlation
+Sigma <- Lambda %*% t(Lambda) + Psi
+
+
+# residual matrix
+round(S - Sigma, 5)
+
+
+
+```
+
+Numbers close to 0 indicate that our factor model is a good representation of the underlying concept.
+
+**Factor Rotations**
+Factor rotations in factor analysis are used to achieve a more interpretable and meaningful solution. The primary goal of factor rotation is to simplify and clarify the factor structure by creating more distinct and easily interpretable factors.
+
+```{r}
+fa.varimax <- factanal(fadata, factors = 4, rotation = "varimax")
+fa.varimax
+```
+
+```{r}
+# There are 13 variables and 4 factors
+round(fa.varimax$loadings[ 1:13,], 3)
+```
+
+-   using varimax factor rotations we can explain factor one as the **metal factor**.Because heavy metals get the low factor loadings(cadmium,Led) compare to other factor loadings.
+
+-   we can explain second factor as the **health factor**.Because values of arsenic,cadmium and bariums are high compared to other factor loadings.These elements and compounds are naturally occuring with health risks.
+
+-   In third factor loadings ,Nitrites got the highest value compare to others.Other all factor loading are lower than 0.1.nitrites are used in food preservatives.Most of the other variables are used in industries.Therefore factor three can name as **Industry Factor**.
+
+-   Factor loadings of arsenic,barium,cadmium, radium and silver are lower than other factor loadings.These lower factors have many negative environmental implications.Therefore this factor can consider as **environmental factor**.
+
+    **Estimation of Factor Scores**
+
+    ```{r}
+    factor_scores <- factor.scores(fadata, fa.varimax$loadings)
+    #factor_scores
+    ```
+
+    ### Confirmatory Factor Analysis
+
+    difference between EFA and CFA?
+
+    CFA and EFA are both methods of factor analysis. It is said that EFA extracts a factor structure from the data whereas CFA is used to test if a factor structure fits the data (or in other words to test a hypothesis)
+
+    ```{r}
+    library(lavaan)
+    factor_loadings <- fa.varimax$loadings
+    factor_scores <- factor.scores(fadata, fa.varimax$loadings)
+    ```
+
+    ```{r}
+    model = "
+      Metals =~  arsenic + barium+ cadmium+chromium+copper+lead+radium+silver
+      Chemicals =~nitrites+perchlorate
+      Industry_chem =~ chloramine 
+      Elements_Componds=~ aluminium+ammonia
+    "
+    cfa.est<-cfa(model, data=fadata,std.lv=TRUE)
+    summary(cfa.est,fit=TRUE)
+    ```
+
+    Using these criteria, we can evaluate whether the confirmatory factor model identified
+
+    -   The chi-square statistic is 3148 with the degrees of freedom 60 and a p-value close to 0. Therefore, one would reject the hypothesis that the model fits the data simply based on it.
+
+    -   Comparative Fit Index (CFI) is 0.872, which is smaller than the cut-off value 0.95. It also suggests a bad fit.
+
+    -   The RMSEA = 0.085, which lies the range of a reasonable fit model.
